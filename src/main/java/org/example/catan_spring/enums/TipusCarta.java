@@ -1,4 +1,4 @@
-package org.example.relationships.enums;
+package org.example.catan_spring.enums;
 
 public enum TipusCarta {
     CAVALLER, MONOPOLI, PUNT_VICTORIA

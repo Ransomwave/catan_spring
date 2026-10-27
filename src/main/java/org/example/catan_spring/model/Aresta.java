@@ -1,4 +1,4 @@
-package org.example.relationships.classes;
+package org.example.catan_spring.model;
 
 import org.hibernate.annotations.DynamicInsert;
 

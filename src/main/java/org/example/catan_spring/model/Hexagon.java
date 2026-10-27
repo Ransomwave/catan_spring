@@ -1,9 +1,9 @@
-package org.example.relationships.classes;
+package org.example.catan_spring.model;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import org.example.relationships.enums.TipusTerreny;
+import org.example.catan_spring.enums.TipusTerreny;
 import org.hibernate.annotations.Check;
 
 import jakarta.persistence.*;

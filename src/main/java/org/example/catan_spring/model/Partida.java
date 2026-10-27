@@ -1,10 +1,10 @@
-package org.example.relationships.classes;
+package org.example.catan_spring.model;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import org.example.relationships.enums.EstatPartida;
+import org.example.catan_spring.enums.EstatPartida;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.DynamicInsert;
 import org.hibernate.annotations.ManyToAny;

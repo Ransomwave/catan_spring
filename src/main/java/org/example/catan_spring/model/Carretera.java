@@ -1,14 +1,12 @@
-package org.example.relationships.classes;
+package org.example.catan_spring.model;
 
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.NamedQuery;
 import jakarta.persistence.OneToOne;
 
 @Entity
 @DiscriminatorValue("carretera")
-@NamedQuery(name = "Carretera.countByPropietari", query = "select count(c) from Carretera c where c.propietari = :jugador")
 public class Carretera extends Construccio {
 
 	@OneToOne(optional = false)

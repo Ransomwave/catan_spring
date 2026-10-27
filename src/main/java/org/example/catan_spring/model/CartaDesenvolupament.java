@@ -1,6 +1,6 @@
-package org.example.relationships.classes;
+package org.example.catan_spring.model;
 
-import org.example.relationships.enums.TipusCarta;
+import org.example.catan_spring.enums.TipusCarta;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

@@ -1,12 +1,12 @@
-package org.example.relationships.classes;
+package org.example.catan_spring.model;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.example.relationships.enums.ColorJugador;
-import org.example.relationships.enums.TipusRecurs;
+import org.example.catan_spring.enums.ColorJugador;
+import org.example.catan_spring.enums.TipusRecurs;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
