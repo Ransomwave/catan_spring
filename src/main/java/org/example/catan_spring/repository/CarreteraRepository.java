@@ -18,6 +18,8 @@ public interface CarreteraRepository extends JpaRepository<Carretera, Integer> {
 
 	long countByPropietari(Jugador propietari);
 
+	long countByPropietari_Id(Integer idJugador);
+
 	@Query("""
 			SELECT count(c) FROM Carretera c
 			WHERE c.propietari = :jugador

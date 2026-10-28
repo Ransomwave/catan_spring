@@ -15,6 +15,8 @@ public interface HexagonRepository extends JpaRepository<Hexagon, Integer> {
 
 	Optional<Hexagon> findByIdAndPartidaId(Integer id, Integer partidaId);
 
+	List<Hexagon> findByPartida_IdOrderByCodiAsc(Integer idPartida);
+
 	@Query("""
 			select hv.hexagon
 			from HexagonVertex hv

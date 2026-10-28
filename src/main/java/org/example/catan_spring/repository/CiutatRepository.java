@@ -12,4 +12,6 @@ public interface CiutatRepository extends JpaRepository<Ciutat, Integer>  {
 	
 	long countByPropietari(Jugador jugador);
 
+	long countByPropietari_Id(Integer idJugador);
+
 }
