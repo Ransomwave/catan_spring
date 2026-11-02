@@ -3,18 +3,16 @@ package org.example.catan_spring.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
 
 import org.example.catan_spring.GameRulesHelper;
+import org.example.catan_spring.dto.PlayerResponse;
 import org.example.catan_spring.enums.EstatPartida;
 import org.example.catan_spring.enums.TipusCarta;
 import org.example.catan_spring.enums.TipusRecurs;
-import org.example.catan_spring.model.Assentament;
 import org.example.catan_spring.model.Carretera;
 import org.example.catan_spring.model.CartaDesenvolupament;
 import org.example.catan_spring.model.Ciutat;
-import org.example.catan_spring.model.Hexagon;
 import org.example.catan_spring.model.Jugador;
 import org.example.catan_spring.model.Partida;
 import org.example.catan_spring.model.Poblat;
@@ -72,8 +70,11 @@ public class JugadorService {
         this.ciutatRepository = ciutatRepository;
     }
 
+    /**
+     * @return the name of the player whose turn it is now
+     */
     @Transactional
-    public void passarTorn(int idJugador) {
+    public String passarTorn(int idJugador) {
 
         var jugador = jugadorRepository.findById(idJugador)
                 .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
@@ -101,6 +102,7 @@ public class JugadorService {
                     "No es pot passar torn en aquest estat de partida.");
         }
         partida.setDausTirats(false);
+        return partida.getActiu().getNom();
     }
 
     private void passarTornEnCurs(Partida partida) {
@@ -341,26 +343,11 @@ public class JugadorService {
         return vertexRepository.findDisponibles(partida, jugador, partida.getEstat() == EstatPartida.PREPARACIO);
     }
 
-    @Transactional
-    public void mostrarRecursos(int idJugador) {
-        Jugador jugador = null;
-        Optional<Jugador> j = jugadorRepository.findById(idJugador);
-        if (j.isPresent()) {
-            jugador = j.get();
-        }
-        else {
-            throw new IllegalArgumentException(
-                "No existeix el jugador " + idJugador
-            );
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("Inventari de ").append(jugador.getNom()).append(" (").append(jugador.getColor()).append(")\n");
-        for (RecursJugador r : jugador.getInventari()) {
-            sb.append("\t").append(r.getTipus()).append(": ").append(r.getQuantitat()).append("\n");
-        }
-
-        String text = sb.toString();
-        System.out.println(text);
+    @Transactional(readOnly = true)
+    public PlayerResponse mostrarRecursos(int idJugador) {
+        var jugador = jugadorRepository.findById(idJugador)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+        return PlayerResponse.from(jugador);
     }
 
     @Transactional

@@ -10,8 +10,15 @@ import org.springframework.data.repository.query.Param;
 public interface HexagonVertexRepository
         extends JpaRepository<HexagonVertex, Integer> {
 
-    List<HexagonVertex> findByHexagon_IdOrderByPosicioAsc(
-            Integer idHexagon);
+    // Settlements and cities on the vertices of each hexagon of the game: [hexagon id, assentament]
+    @Query("""
+        SELECT hv.hexagon.id, a
+        FROM HexagonVertex hv
+        JOIN Assentament a ON a.vertex = hv.vertex
+        WHERE hv.hexagon.partida.id = :idPartida
+        ORDER BY hv.posicio
+        """)
+    List<Object[]> findAssentamentsByPartidaId(@Param("idPartida") Integer idPartida);
 
     @Query("""
         SELECT hv.hexagon.terreny, a

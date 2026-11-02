@@ -1,6 +1,5 @@
 package org.example.catan_spring.repository;
 
-import java.util.List;
 import java.util.Optional;
 
 import org.example.catan_spring.model.Assentament;
@@ -13,8 +12,6 @@ import org.springframework.data.repository.query.Param;
 public interface AssentamentRepository extends JpaRepository<Assentament, Integer> {
 
 	Optional<Assentament> findById(int id);
-
-	List<Assentament> findByVertex_Id(Integer idVertex);
 
 	long countByVertex(Vertex vertex);
 

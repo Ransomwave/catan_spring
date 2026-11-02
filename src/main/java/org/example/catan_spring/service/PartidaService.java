@@ -8,12 +8,17 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
 import org.example.catan_spring.GameRulesHelper;
+import org.example.catan_spring.dto.DiceRollResponse;
+import org.example.catan_spring.dto.GameResponse;
+import org.example.catan_spring.dto.HexagonResponse;
+import org.example.catan_spring.dto.PlayerResponse;
 import org.example.catan_spring.enums.ColorJugador;
 import org.example.catan_spring.enums.EstatPartida;
 import org.example.catan_spring.enums.TipusCarta;
@@ -98,7 +103,7 @@ public class PartidaService {
 
     // Crea una partida, els jugadors, el tauler i les cartes
     @Transactional
-    public Integer iniciarPartida(List<String> playerNames) {
+    public GameResponse iniciarPartida(List<String> playerNames, Integer pointsToWin) {
 
         if (playerNames == null
                 || playerNames.size() < 2
@@ -107,7 +112,7 @@ public class PartidaService {
                     "Hi ha d'haver entre 2 i 4 jugadors");
         }
 
-        Partida partida = new Partida(EstatPartida.PREPARACIO, 1, 10);
+        Partida partida = new Partida(EstatPartida.PREPARACIO, 1, pointsToWin == null ? 10 : pointsToWin);
         partidaRepository.save(partida);
 
         List<String> names = new ArrayList<>(playerNames);
@@ -123,6 +128,7 @@ public class PartidaService {
                     partida);
 
             jugadorRepository.save(jugador);
+            partida.getJugadors().add(jugador);
 
             if (i == 0) {
                 partida.setActiu(jugador);
@@ -150,7 +156,16 @@ public class PartidaService {
             cartaRepository.save(carta);
         }
 
-        return partida.getId();
+        var players = new ArrayList<PlayerResponse>();
+        for (var jugador : partida.getJugadors()) {
+            players.add(PlayerResponse.from(jugador));
+        }
+        var hexagons = new ArrayList<HexagonResponse>();
+        for (var hexagon : partida.getTauler()) {
+            hexagons.add(HexagonResponse.from(hexagon, partida, List.of()));
+        }
+        return new GameResponse(partida.getId(), partida.getEstat(), partida.getRonda(),
+                partida.getPuntsPerGuanyar(), players, hexagons);
     }
 
     private void afegirTerrenys(
@@ -227,6 +242,7 @@ public class PartidaService {
 
             hexagonRepository.save(hexagon);
             hexagons.put(codi, hexagon);
+            partida.getTauler().add(hexagon);
 
             if (terreny == TipusTerreny.DESERT) {
                 partida.setLladre(hexagon);
@@ -305,69 +321,24 @@ public class PartidaService {
     }
 
     @Transactional(readOnly = true)
-    public void mostrarTauler(Integer idPartida) {
+    public List<HexagonResponse> mostrarTauler(Integer idPartida) {
 
         Partida partida = buscarPartida(idPartida);
 
-        List<Hexagon> hexagons = hexagonRepository.findByPartida_IdOrderByCodiAsc(idPartida);
-
-        System.out.println(
-                "===== TAULER DE LA PARTIDA " + idPartida + " =====");
-
-        for (Hexagon hexagon : hexagons) {
-
-            String textNumero;
-
-            if (hexagon.getNumero() == null) {
-                textNumero = "Sense número";
-            } else {
-                textNumero = String.valueOf(hexagon.getNumero());
-            }
-
-            boolean hiHaLladre = false;
-
-            if (partida.getLladre() != null) {
-                if (partida.getLladre().getId().equals(hexagon.getId())) {
-                    hiHaLladre = true;
-                }
-            }
-
-            String textLladre;
-
-            if (hiHaLladre) {
-                textLladre = "Sí";
-            } else {
-                textLladre = "No";
-            }
-
-            System.out.println();
-            System.out.println("Hexàgon " + hexagon.getCodi());
-            System.out.println("Terreny: " + hexagon.getTerreny());
-            System.out.println("Número: " + textNumero);
-            System.out.println("Lladre: " + textLladre);
-
-            List<HexagonVertex> relacions = hexagonVertexRepository.findByHexagon_IdOrderByPosicioAsc(
-                    hexagon.getId());
-
-            for (HexagonVertex relacio : relacions) {
-
-                Vertex vertex = relacio.getVertex();
-
-                List<Assentament> assentaments = assentamentRepository.findByVertex_Id(vertex.getId());
-
-                for (Assentament assentament : assentaments) {
-
-                    String tipus = assentament.getClass().getSimpleName();
-                    String propietari = assentament.getPropietari().getNom();
-
-                    System.out.println("  Vèrtex " + vertex.getCodi()
-                            + ": " + tipus + " de " + propietari);
-                }
-            }
+        // Every building on the board in a single query, grouped by hexagon id
+        var buildings = new HashMap<Integer, List<HexagonResponse.Building>>();
+        for (Object[] row : hexagonVertexRepository.findAssentamentsByPartidaId(idPartida)) {
+            var hexagonId = (Integer) row[0];
+            var assentament = (Assentament) row[1];
+            buildings.computeIfAbsent(hexagonId, k -> new ArrayList<>())
+                    .add(HexagonResponse.Building.from(assentament));
         }
 
-        System.out.println();
-        System.out.println("===== FI DEL TAULER =====");
+        var board = new ArrayList<HexagonResponse>();
+        for (Hexagon hexagon : hexagonRepository.findByPartida_IdOrderByCodiAsc(idPartida)) {
+            board.add(HexagonResponse.from(hexagon, partida, buildings.getOrDefault(hexagon.getId(), List.of())));
+        }
+        return board;
     }
 
     @Transactional(readOnly = true)
@@ -429,7 +400,7 @@ public class PartidaService {
     }
 
     @Transactional
-    public String tirarDaus(int idPartida) {
+    public DiceRollResponse tirarDaus(int idPartida) {
 
         Partida partida = buscarPartida(idPartida);
 
@@ -450,21 +421,26 @@ public class PartidaService {
         partida.setUltimaTirada(tirada);
         partida.setDausTirats(true);
 
-        StringBuilder resum = new StringBuilder();
-        resum.append("Tirada: " + dau1 + " + " + dau2 + " = " + tirada + "\n");
+        // Keyed by player id
+        var received = new HashMap<Integer, EnumMap<TipusRecurs, Integer>>();
+        var discarded = new HashMap<Integer, Integer>();
 
         if (tirada == 7) {
-            gestionarSet(partida, resum);
+            gestionarSet(partida, discarded);
         } else {
-            repartirRecursos(partida, tirada, resum);
+            repartirRecursos(partida, tirada, received);
         }
 
-        return resum.toString();
+        var players = new ArrayList<DiceRollResponse.PlayerResources>();
+        for (Jugador jugador : jugadorRepository.findByPartida_IdOrderByOrdreTornAsc(idPartida)) {
+            players.add(new DiceRollResponse.PlayerResources(jugador.getId(), jugador.getNom(),
+                    received.getOrDefault(jugador.getId(), new EnumMap<>(TipusRecurs.class)),
+                    discarded.getOrDefault(jugador.getId(), 0)));
+        }
+        return new DiceRollResponse(dau1, dau2, tirada, partida.isLladrePendent(), players);
     }
 
-    private void gestionarSet(Partida partida, StringBuilder resum) {
-
-        resum.append("No hi ha producció, s'ha de moure el lladre\n");
+    private void gestionarSet(Partida partida, HashMap<Integer, Integer> discarded) {
 
         for (Jugador jugador : partida.getJugadors()) {
 
@@ -490,24 +466,19 @@ public class PartidaService {
                 GameRulesHelper.addResource(jugador, cartes.get(i), -1);
             }
 
-            resum.append(jugador.getNom() + " descarta "
-                    + aDescartar + " recursos\n");
+            discarded.put(jugador.getId(), aDescartar);
         }
 
         partida.setLladrePendent(true);
     }
 
     private void repartirRecursos(
-            Partida partida, int tirada, StringBuilder resum) {
+            Partida partida, int tirada, HashMap<Integer, EnumMap<TipusRecurs, Integer>> received) {
 
         Integer idLladre = partida.getLladre().getId();
 
         List<Object[]> files = hexagonVertexRepository.trobarProduccioPerTirada(
                 partida.getId(), tirada, idLladre);
-
-        if (files.isEmpty()) {
-            resum.append("Ningú no rep res\n");
-        }
 
         for (Object[] fila : files) {
 
@@ -525,8 +496,8 @@ public class PartidaService {
             GameRulesHelper.addResource(
                     jugador, terreny.getResource(), quantitat);
 
-            resum.append(jugador.getNom() + " rep " + quantitat + " "
-                    + terreny.getResource() + "\n");
+            received.computeIfAbsent(jugador.getId(), k -> new EnumMap<>(TipusRecurs.class))
+                    .merge(terreny.getResource(), quantitat, Integer::sum);
         }
     }
 
