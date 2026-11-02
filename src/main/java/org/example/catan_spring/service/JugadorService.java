@@ -2,6 +2,7 @@ package org.example.catan_spring.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 
@@ -27,39 +28,50 @@ import org.example.catan_spring.repository.CartaDesenvolupamentRepository;
 import org.example.catan_spring.repository.CiutatRepository;
 import org.example.catan_spring.repository.HexagonRepository;
 import org.example.catan_spring.repository.JugadorRepository;
-import org.example.catan_spring.repository.PartidaRepository;
 import org.example.catan_spring.repository.PoblatRepository;
 import org.example.catan_spring.repository.VertexRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class JugadorService {
 
+    private final PartidaService partidaService;
+    private final JugadorRepository jugadorRepository;
+    private final CarreteraRepository carreteraRepository;
+    private final PoblatRepository poblatRepository;
+    private final HexagonRepository hexagonRepository;
+    private final AssentamentRepository assentamentRepository;
+    private final CartaDesenvolupamentRepository cartaDesenvolupamentRepository;
+    private final VertexRepository vertexRepository;
+    private final ArestaRepository arestaRepository;
+    private final CiutatRepository ciutatRepository;
+
     private final Random random = new Random();
 
-    @Autowired
-    private PartidaRepository partidaRepository;
-    @Autowired
-    private JugadorRepository jugadorRepository;
-    @Autowired
-    private CarreteraRepository carreteraRepository;
-    @Autowired
-    private PoblatRepository poblatRepository;
-    @Autowired
-    private HexagonRepository hexagonRepository;
-    @Autowired
-    private AssentamentRepository assentamentRepository;
-    @Autowired
-    private CartaDesenvolupamentRepository cartaDesenvolupamentRepository;
-    @Autowired
-    private VertexRepository vertexRepository;
-    @Autowired
-    private ArestaRepository arestaRepository;
-    @Autowired
-    private CiutatRepository ciutatRepository;
+    public JugadorService(
+            PartidaService partidaService,
+            JugadorRepository jugadorRepository,
+            CarreteraRepository carreteraRepository,
+            PoblatRepository poblatRepository,
+            HexagonRepository hexagonRepository,
+            AssentamentRepository assentamentRepository,
+            CartaDesenvolupamentRepository cartaDesenvolupamentRepository,
+            VertexRepository vertexRepository,
+            ArestaRepository arestaRepository,
+            CiutatRepository ciutatRepository) {
+
+        this.partidaService = partidaService;
+        this.jugadorRepository = jugadorRepository;
+        this.carreteraRepository = carreteraRepository;
+        this.poblatRepository = poblatRepository;
+        this.hexagonRepository = hexagonRepository;
+        this.assentamentRepository = assentamentRepository;
+        this.cartaDesenvolupamentRepository = cartaDesenvolupamentRepository;
+        this.vertexRepository = vertexRepository;
+        this.arestaRepository = arestaRepository;
+        this.ciutatRepository = ciutatRepository;
+    }
 
     @Transactional
     public void passarTorn(int idJugador) {
@@ -266,9 +278,7 @@ public class JugadorService {
         var carta = pila.get(index);
         carta.setPropietari(jugador);
         carta.setRondaCompra(partida.getRonda());
-        // PartidaDao.comprovarVictoria(session, partida);
-        // TODO: wait for PartidaService
-
+        partidaService.comprovarVictoria(partida.getId());
     }
 
     @Transactional
@@ -307,8 +317,7 @@ public class JugadorService {
             jugador.setCavallersJugats(
                     jugador.getCavallersJugats() + 1);
             partida.setLladrePendent(true);
-            // PartidaDao.comprovarVictoria(session, partida);
-            // TODO: wait for PartidaService
+            partidaService.comprovarVictoria(partida.getId());
         } else if (carta.getTipus() == TipusCarta.MONOPOLI) {
             var currentPlrRecurs = GameRulesHelper.getResource(jugador, recurs);
             for (var otherPlr : partida.getJugadors()) {
@@ -471,135 +480,60 @@ public class JugadorService {
             }
         }
 
-        // TODO: wait for PartidaService
-
-
+        partidaService.comprovarVictoria(partida.getId());
     }
 
     @Transactional
     public void millorarACiutat(int idJugador, int idVertex) {
-        Jugador jugador = null;
-        Optional<Jugador> j = jugadorRepository.findById(idJugador);
-        if (j.isPresent()) {
-            jugador = j.get();
-        } else {
-            throw new IllegalArgumentException(
-                "No existeix el jugador."
-            );
-        }
-        Partida partida = jugador.getPartida();
-        if (partida.getActiu() == null
-                || !partida.getActiu().getId().equals(idJugador)) {
-            throw new IllegalStateException(
-                "No és el torn d'aquest jugador."
-            );
-        }
-        Vertex vertex = null;
-        Optional<Vertex> v = vertexRepository.findById(idVertex);
-        if (v.isPresent()) {
-            vertex = v.get();
-        } else {
-            throw new IllegalArgumentException(
-                "No existeix el vertex."
-            );
-        }
-        if (!vertex.getPartida().getId().equals(partida.getId())) {
-            throw new IllegalArgumentException(
-                "El vertex no pertany a aquesta partida."
-            );
-        }
-        Poblat poblat = poblatRepository.poblatPerVertex(vertex);
+        var jugador = jugadorRepository.findById(idJugador)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+
+        GameRulesHelper.checkAction(jugador, false);
+        var partida = jugador.getPartida();
+        var vertex = vertexRepository.findById(idVertex)
+                .filter(v -> v.getPartida().getId().equals(partida.getId()))
+                .orElseThrow(() -> new IllegalArgumentException("El vertex no pertany a aquesta partida."));
+
+        var poblat = poblatRepository.poblatPerVertex(vertex);
         if (poblat == null) {
-            throw new IllegalStateException(
-                "No hi ha cap poblat en aquest vertex."
-            );
+            throw new IllegalStateException("No hi ha cap poblat en aquest vertex.");
         }
         if (!poblat.getPropietari().getId().equals(idJugador)) {
-            throw new IllegalStateException(
-                "El poblat no pertany a aquest jugador."
-            );
+            throw new IllegalStateException("El poblat no pertany a aquest jugador.");
         }
-        Long nombreCiutats = ciutatRepository.countByPropietari(jugador);
-        if (nombreCiutats >= 4) {
-            throw new IllegalStateException(
-                "Ja tens el maxim de 4 ciutats."
-            );
+        if (ciutatRepository.countByPropietari(jugador) >= 4) {
+            throw new IllegalStateException("Ja tens el maxim de 4 ciutats.");
         }
-        RecursJugador blat = null;
-        RecursJugador mineral = null;
-        for (RecursJugador recurs : jugador.getInventari()) {
-            if (recurs.getTipus() == TipusRecurs.BLAT) {
-                blat = recurs;
-            }
 
-            if (recurs.getTipus() == TipusRecurs.MINERAL) {
-                mineral = recurs;
-            }
-        }
-        if (blat == null || mineral == null
-                || blat.getQuantitat() < 2
-                || mineral.getQuantitat() < 3) {
-            throw new IllegalStateException(
-                "No tens prou recursos per construir una ciutat."
-            );
-        }
-        blat.setQuantitat(blat.getQuantitat() - 2);
-        mineral.setQuantitat(mineral.getQuantitat() - 3);
-        Ciutat ciutat = new Ciutat();
+        GameRulesHelper.pay(jugador, GameRulesHelper.COST_CIUTAT);
+        poblatRepository.delete(poblat);
+        // Hibernate flushes deletes after inserts, so the poblat must leave the vertex before the ciutat takes it
+        poblatRepository.flush();
+
+        var ciutat = new Ciutat();
         ciutat.setVertex(vertex);
         ciutat.setPropietari(jugador);
-        poblatRepository.delete(poblat);
         ciutatRepository.save(ciutat);
+        partidaService.comprovarVictoria(partida.getId());
     }
 
+    @Transactional
     public void comerciarBanca(int idJugador, TipusRecurs dona, TipusRecurs rep) {
-        Jugador jugador = null;
-        Optional<Jugador> j = jugadorRepository.findById(idJugador);
-        if (j.isPresent()) {
-            jugador = j.get();
-        } else {
-            throw new IllegalArgumentException(
-                    "El jugador no existeix."
-            );
-        }
-        Partida partida = jugador.getPartida();
-        if (partida.getActiu() == null
-                || !partida.getActiu().getId().equals(idJugador)) {
-            throw new IllegalStateException(
-                    "No és el torn d'aquest jugador."
-            );
-        }
-        if (dona == null || rep == null || dona == rep) {
-            throw new IllegalArgumentException(
-                    "Els tipus de recursos han de ser diferents."
-            );
-        }
-        RecursJugador recursDonat = null;
-        RecursJugador recursRebut = null;
-        for (RecursJugador recurs : jugador.getInventari()) {
-            if (recurs.getTipus() == dona) {
-                recursDonat = recurs;
-            }
+        var jugador = jugadorRepository.findById(idJugador)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
 
-            if (recurs.getTipus() == rep) {
-                recursRebut = recurs;
-            }
+        GameRulesHelper.checkAction(jugador, false);
+        if (dona == null || rep == null || dona == rep) {
+            throw new IllegalArgumentException("Els tipus de recursos han de ser diferents.");
         }
-        if (recursDonat == null || recursRebut == null) {
-            throw new IllegalStateException(
-                    "No s'han trobat els recursos necessaris."
-            );
-        }
-        if (recursDonat.getQuantitat() < 4) {
-            throw new IllegalStateException(
-                    "No tens prou recursos per fer l'intercanvi."
-            );
-        }
-        recursDonat.setQuantitat(recursDonat.getQuantitat() - 4);
-        recursRebut.setQuantitat(recursRebut.getQuantitat() + 1);
+        GameRulesHelper.pay(jugador, Map.of(dona, 4));
+        GameRulesHelper.addResource(jugador, rep, 1);
     }
 
+    @Transactional(readOnly = true)
     public int calcularPunts(int idJugador) {
-        throw new UnsupportedOperationException("Not implemented yet");
+        var jugador = jugadorRepository.findById(idJugador)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+        return partidaService.calcularPunts(jugador);
     }
 }

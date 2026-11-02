@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
+import org.example.catan_spring.GameRulesHelper;
 import org.example.catan_spring.enums.ColorJugador;
 import org.example.catan_spring.enums.EstatPartida;
 import org.example.catan_spring.enums.TipusCarta;
@@ -40,31 +41,20 @@ import org.example.catan_spring.repository.HexagonVertexRepository;
 import org.example.catan_spring.repository.JugadorRepository;
 import org.example.catan_spring.repository.PartidaRepository;
 import org.example.catan_spring.repository.VertexRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PartidaService {
-	@Autowired
     private final PartidaRepository partidaRepository;
-	@Autowired
     private final JugadorRepository jugadorRepository;
-	@Autowired
     private final CartaDesenvolupamentRepository cartaRepository;
-	@Autowired
     private final CiutatRepository ciutatRepository;
-	@Autowired
     private final CarreteraRepository carreteraRepository;
-	@Autowired
     private final VertexRepository vertexRepository;
-	@Autowired
     private final HexagonRepository hexagonRepository;
-	@Autowired
     private final HexagonVertexRepository hexagonVertexRepository;
-	@Autowired
     private final ArestaRepository arestaRepository;
-	@Autowired
     private final AssentamentRepository assentamentRepository;
 
     private final Random random = new Random();
@@ -304,8 +294,7 @@ public class PartidaService {
 
     private InputStreamReader obrirFitxer(String nomFitxer) {
 
-        InputStream stream =
-                getClass().getResourceAsStream("/board/" + nomFitxer);
+        InputStream stream = getClass().getResourceAsStream("/board/" + nomFitxer);
 
         if (stream == null) {
             throw new IllegalStateException(
@@ -320,8 +309,7 @@ public class PartidaService {
 
         Partida partida = buscarPartida(idPartida);
 
-        List<Hexagon> hexagons =
-                hexagonRepository.findByPartida_IdOrderByCodiAsc(idPartida);
+        List<Hexagon> hexagons = hexagonRepository.findByPartida_IdOrderByCodiAsc(idPartida);
 
         System.out.println(
                 "===== TAULER DE LA PARTIDA " + idPartida + " =====");
@@ -358,16 +346,14 @@ public class PartidaService {
             System.out.println("Número: " + textNumero);
             System.out.println("Lladre: " + textLladre);
 
-            List<HexagonVertex> relacions =
-                    hexagonVertexRepository.findByHexagon_IdOrderByPosicioAsc(
-                            hexagon.getId());
+            List<HexagonVertex> relacions = hexagonVertexRepository.findByHexagon_IdOrderByPosicioAsc(
+                    hexagon.getId());
 
             for (HexagonVertex relacio : relacions) {
 
                 Vertex vertex = relacio.getVertex();
 
-                List<Assentament> assentaments =
-                        assentamentRepository.findByVertex_Id(vertex.getId());
+                List<Assentament> assentaments = assentamentRepository.findByVertex_Id(vertex.getId());
 
                 for (Assentament assentament : assentaments) {
 
@@ -389,9 +375,8 @@ public class PartidaService {
 
         Partida partida = buscarPartida(idPartida);
 
-        List<Jugador> jugadors =
-                jugadorRepository.findByPartida_IdOrderByOrdreTornAsc(
-                        idPartida);
+        List<Jugador> jugadors = jugadorRepository.findByPartida_IdOrderByOrdreTornAsc(
+                idPartida);
 
         String nomActiu;
 
@@ -424,8 +409,7 @@ public class PartidaService {
 
             long ciutats = ciutatRepository.countByPropietari_Id(idJugador);
 
-            long carreteres =
-                    carreteraRepository.countByPropietari_Id(idJugador);
+            long carreteres = carreteraRepository.countByPropietari_Id(idJugador);
 
             long recursos = jugadorRepository.comptarRecursosTotals(idJugador);
 
@@ -513,7 +497,6 @@ public class PartidaService {
         partida.setLladrePendent(true);
     }
 
-
     private void repartirRecursos(
             Partida partida, int tirada, StringBuilder resum) {
 
@@ -575,13 +558,12 @@ public class PartidaService {
         return punts;
     }
 
-    // Retorna el jugador amb l'exèrcit més gran 
+    // Retorna el jugador amb l'exèrcit més gran
     @Transactional(readOnly = true)
     public Jugador exercitMesGran(Integer idPartida) {
 
-        List<Jugador> jugadors =
-                jugadorRepository.findByPartida_IdOrderByCavallersJugatsDesc(
-                        idPartida);
+        List<Jugador> jugadors = jugadorRepository.findByPartida_IdOrderByCavallersJugatsDesc(
+                idPartida);
 
         if (jugadors.isEmpty()) {
             return null;
@@ -611,9 +593,8 @@ public class PartidaService {
 
         Partida partida = buscarPartida(idPartida);
 
-        List<Jugador> jugadors =
-                jugadorRepository.findByPartida_IdOrderByOrdreTornAsc(
-                        idPartida);
+        List<Jugador> jugadors = jugadorRepository.findByPartida_IdOrderByOrdreTornAsc(
+                idPartida);
 
         for (Jugador jugador : jugadors) {
 
