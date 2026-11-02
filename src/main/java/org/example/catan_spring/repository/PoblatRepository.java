@@ -13,7 +13,7 @@ public interface PoblatRepository extends JpaRepository<Poblat, Integer> {
 
 	Optional<Poblat> findById(int id);
 
-	long countByPropietari(Jugador propietari);
+	long countByPropietari(@Param("jugador") Jugador propietari);
 
 	@Query("""
 			FROM Poblat p WHERE p.vertex = :vertex

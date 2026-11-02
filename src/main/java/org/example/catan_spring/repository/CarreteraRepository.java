@@ -16,7 +16,7 @@ public interface CarreteraRepository extends JpaRepository<Carretera, Integer> {
 
 	long countByAresta(Aresta aresta);
 
-	long countByPropietari(Jugador propietari);
+	long countByPropietari(@Param("jugador") Jugador propietari);
 
 	long countByPropietari_Id(Integer idJugador);
 

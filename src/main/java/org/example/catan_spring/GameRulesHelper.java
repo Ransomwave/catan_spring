@@ -40,19 +40,19 @@ public final class GameRulesHelper {
         var partida = jugador.getPartida();
 
         if (partida.getEstat() == EstatPartida.FINALITZADA)
-            throw new IllegalStateException("La partida ja ha finalitzat");
+            throw new IllegalStateException("Partida no en curs: la partida ja ha finalitzat");
         if (partida.getEstat() == EstatPartida.PREPARACIO && !allowedInPreparacio)
-            throw new IllegalStateException("Aquesta acció no es pot fer durant la fase de preparació");
+            throw new IllegalStateException("Partida no en curs: encara és a la fase de preparació");
 
         var actiu = partida.getActiu();
         if (actiu == null || !actiu.getId().equals(jugador.getId()))
-            throw new IllegalStateException("No és el torn de " + jugador.getNom());
+            throw new IllegalStateException("No és el teu torn");
 
         if (partida.getEstat() == EstatPartida.EN_CURS) {
             if (!partida.isDausTirats())
-                throw new IllegalStateException("Primer s'han de tirar els daus");
+                throw new IllegalStateException("Daus no tirats");
             if (partida.isLladrePendent())
-                throw new IllegalStateException("Primer s'ha de moure el lladre");
+                throw new IllegalStateException("Lladre pendent: primer s'ha de moure el lladre");
         }
     }
 
@@ -78,7 +78,7 @@ public final class GameRulesHelper {
      */
     public static void pay(Jugador jugador, Map<TipusRecurs, Integer> cost) {
         if (!hasResources(jugador, cost))
-            throw new IllegalStateException(jugador.getNom() + " no té prou recursos");
+            throw new IllegalStateException("Sense recursos");
         for (var entry : cost.entrySet())
             addResource(jugador, entry.getKey(), -entry.getValue());
     }

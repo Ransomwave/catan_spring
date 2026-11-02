@@ -10,7 +10,6 @@ import org.example.catan_spring.GameRulesHelper;
 import org.example.catan_spring.enums.EstatPartida;
 import org.example.catan_spring.enums.TipusCarta;
 import org.example.catan_spring.enums.TipusRecurs;
-import org.example.catan_spring.model.Aresta;
 import org.example.catan_spring.model.Assentament;
 import org.example.catan_spring.model.Carretera;
 import org.example.catan_spring.model.CartaDesenvolupament;
@@ -80,17 +79,18 @@ public class JugadorService {
                 .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
 
         var partida = jugador.getPartida();
+        if (partida.getEstat() == EstatPartida.FINALITZADA) {
+            throw new IllegalStateException("Partida no en curs: la partida ja ha finalitzat");
+        }
         if (partida.getActiu() == null || !partida.getActiu().getId().equals(idJugador)) {
-            throw new IllegalStateException("No és el torn d'aquest jugador.");
+            throw new IllegalStateException("No és el teu torn");
         }
         if (partida.isLladrePendent()) {
-            throw new IllegalStateException(
-                    "No es pot passar torn: cal moure el lladre.");
+            throw new IllegalStateException("Lladre pendent: primer s'ha de moure el lladre");
         }
         if (partida.getEstat() == EstatPartida.EN_CURS) {
             if (!partida.isDausTirats()) {
-                throw new IllegalStateException(
-                        "Has de tirar els daus abans de passar torn.");
+                throw new IllegalStateException("Daus no tirats");
             }
             passarTornEnCurs(partida);
         } else if (partida.getEstat() == EstatPartida.PREPARACIO) {
@@ -194,7 +194,7 @@ public class JugadorService {
 
         if (partida.getActiu() == null
                 || !partida.getActiu().getId().equals(idJugador)) {
-            throw new IllegalStateException("No és el torn d'aquest jugador.");
+            throw new IllegalStateException("No és el teu torn");
         }
 
         if (!partida.isLladrePendent()) {
@@ -365,31 +365,23 @@ public class JugadorService {
 
     @Transactional
     public void construirCarretera(int idJugador, int idAresta) {
-        Jugador jugador = null;
-        Optional<Jugador> j = jugadorRepository.findById(idJugador);
-        if (j.isPresent()) {
-            jugador = j.get();
-        }else {
-            throw new IllegalArgumentException("Jugador not found with id: " + idJugador);
-        }
+        var jugador = jugadorRepository.findById(idJugador)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
 
         GameRulesHelper.checkAction(jugador, true);
         var partida = jugador.getPartida();
-        Aresta aresta = null;
-        var a = arestaRepository.findById(idAresta);
-        if (a.isPresent()) {
-            aresta = a.get();
-        }
-        if (aresta == null || !aresta.getPartida().getId().equals(partida.getId()))
-            throw new IllegalArgumentException("Aresta " + idAresta + " isn't part of this game");
+        var aresta = arestaRepository.findById(idAresta)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix l'aresta " + idAresta));
+        if (!aresta.getPartida().getId().equals(partida.getId()))
+            throw new IllegalStateException("Posició d'una altra partida");
 
         var roadsOnAresta = carreteraRepository.countByAresta(aresta);
         if (roadsOnAresta > 0)
-            throw new IllegalStateException("There's already a road on this aresta");
+            throw new IllegalStateException("Posició ocupada");
 
         var ownRoads = carreteraRepository.countByPropietari(jugador);
         if (ownRoads >= 15)
-            throw new IllegalStateException("You've already built 15 roads");
+            throw new IllegalStateException("Límit assolit: ja tens 15 carreteres");
 
         var vertexA = aresta.getVertexA();
         var vertexB = aresta.getVertexB();
@@ -399,14 +391,14 @@ public class JugadorService {
             // only poblat that doesn't have one of their roads next to it yet
             var newPoblats = poblatRepository.poblatsPerJugadorVertexAB(jugador, vertexA, vertexB);
             if (newPoblats == 0)
-                throw new IllegalStateException("The road must touch the poblat you just placed");
+                throw new IllegalStateException("No connectat: la carretera ha de tocar el poblat que acabes de col·locar");
         } else {
             // the road must touch one of the player's poblats/ciutats or another of
             // their roads
             var ownAssentaments = assentamentRepository.assentamentsPerJugadorVertexAB(jugador, vertexA, vertexB);
             var ownConnectedRoads = carreteraRepository.carreteresPerJugadorVertexAB(jugador, vertexA, vertexB);
             if (ownAssentaments == 0 && ownConnectedRoads == 0)
-                throw new IllegalStateException("The road must be connected to one of your buildings or roads");
+                throw new IllegalStateException("No connectat: la carretera ha de tocar una construcció o carretera teva");
 
             GameRulesHelper.pay(jugador, GameRulesHelper.COST_CARRETERA);
         }
@@ -419,47 +411,37 @@ public class JugadorService {
 
     @Transactional
     public void construirPoblat(int idJugador, int idVertex) {
-        Jugador jugador = null;
-        Optional<Jugador> j = jugadorRepository.findById(idJugador);
-        if (j.isPresent()) {
-            jugador = j.get();
-        } else {
-            throw new IllegalArgumentException("Jugador not found with id: " + idJugador);
-        }
-        
+        var jugador = jugadorRepository.findById(idJugador)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+
         GameRulesHelper.checkAction(jugador, true);
         var partida = jugador.getPartida();
         var preparacio = partida.getEstat() == EstatPartida.PREPARACIO;
-        Vertex vertex = null;
-        Optional<Vertex> v = vertexRepository.findById(idVertex);
-        if (v.isPresent()) {
-            vertex = v.get();
-        }
-        if (vertex == null || !vertex.getPartida().getId().equals(partida.getId()))
-            throw new IllegalArgumentException("Vertex " + idVertex + " isn't part of this game");
+        var vertex = vertexRepository.findById(idVertex)
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el vèrtex " + idVertex));
+        if (!vertex.getPartida().getId().equals(partida.getId()))
+            throw new IllegalStateException("Posició d'una altra partida");
 
         var buildingsOnVertex = assentamentRepository.countByVertex(vertex);
         if (buildingsOnVertex > 0)
-            throw new IllegalStateException("There's already a building on this vertex");
+            throw new IllegalStateException("Posició ocupada");
 
-        // don't allow building if there's another building on an adjacent vertex
-        // (distance rule)
         var buildingsNextTo = assentamentRepository.assentamentsPerVertex(vertex);
         if (buildingsNextTo > 0)
-            throw new IllegalStateException("Too close to another building (distance rule)");
+            throw new IllegalStateException("Regla de la distància: hi ha una construcció en un vèrtex adjacent");
 
         var ownPoblats = poblatRepository.countByPropietari(jugador);
         if (ownPoblats >= 5)
-            throw new IllegalStateException("You've already built 5 poblats");
+            throw new IllegalStateException("Límit assolit: ja tens 5 poblats");
 
         if (preparacio) {
-            if (ownPoblats >= partida.getRonda()) // the player can only place 1 poblat per turn during the
-                                                    // preparation phase
-                throw new IllegalStateException("You've already placed your poblat this turn");
+            // only 1 poblat per turn during the preparation phase
+            if (ownPoblats >= partida.getRonda())
+                throw new IllegalStateException("Límit assolit: ja has col·locat el poblat d'aquest torn");
         } else {
             var ownRoadsHere = carreteraRepository.carreteresPerJugadorVertex(jugador, vertex);
             if (ownRoadsHere == 0)
-                throw new IllegalStateException("The poblat must be connected to one of your roads");
+                throw new IllegalStateException("No connectat: el poblat ha de tocar una carretera teva");
 
             GameRulesHelper.pay(jugador, GameRulesHelper.COST_POBLAT);
         }
@@ -491,19 +473,15 @@ public class JugadorService {
         GameRulesHelper.checkAction(jugador, false);
         var partida = jugador.getPartida();
         var vertex = vertexRepository.findById(idVertex)
-                .filter(v -> v.getPartida().getId().equals(partida.getId()))
-                .orElseThrow(() -> new IllegalArgumentException("El vertex no pertany a aquesta partida."));
+                .orElseThrow(() -> new IllegalArgumentException("No existeix el vèrtex " + idVertex));
+        if (!vertex.getPartida().getId().equals(partida.getId()))
+            throw new IllegalStateException("Posició d'una altra partida");
 
         var poblat = poblatRepository.poblatPerVertex(vertex);
-        if (poblat == null) {
-            throw new IllegalStateException("No hi ha cap poblat en aquest vertex.");
-        }
-        if (!poblat.getPropietari().getId().equals(idJugador)) {
-            throw new IllegalStateException("El poblat no pertany a aquest jugador.");
-        }
-        if (ciutatRepository.countByPropietari(jugador) >= 4) {
-            throw new IllegalStateException("Ja tens el maxim de 4 ciutats.");
-        }
+        if (poblat == null || !poblat.getPropietari().getId().equals(idJugador))
+            throw new IllegalStateException("No hi ha cap poblat teu per millorar");
+        if (ciutatRepository.countByPropietari(jugador) >= 4)
+            throw new IllegalStateException("Límit assolit: ja tens 4 ciutats");
 
         GameRulesHelper.pay(jugador, GameRulesHelper.COST_CIUTAT);
         poblatRepository.delete(poblat);
