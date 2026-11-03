@@ -46,6 +46,8 @@ import org.example.catan_spring.repository.HexagonVertexRepository;
 import org.example.catan_spring.repository.JugadorRepository;
 import org.example.catan_spring.repository.PartidaRepository;
 import org.example.catan_spring.repository.VertexRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -101,15 +103,18 @@ public class PartidaService {
         return resultat.get();
     }
 
+    private static <T> ResponseEntity<T> error(HttpStatus status, String info) {
+        return ResponseEntity.status(status).header("Partida-info", info).build();
+    }
+
     // Crea una partida, els jugadors, el tauler i les cartes
     @Transactional
-    public GameResponse iniciarPartida(List<String> playerNames, Integer pointsToWin) {
+    public ResponseEntity<GameResponse> iniciarPartida(List<String> playerNames, Integer pointsToWin) {
 
         if (playerNames == null
                 || playerNames.size() < 2
                 || playerNames.size() > 4) {
-            throw new IllegalArgumentException(
-                    "Hi ha d'haver entre 2 i 4 jugadors");
+            return error(HttpStatus.BAD_REQUEST, "Hi ha d'haver entre 2 i 4 jugadors");
         }
 
         Partida partida = new Partida(EstatPartida.PREPARACIO, 1, pointsToWin == null ? 10 : pointsToWin);
@@ -164,8 +169,11 @@ public class PartidaService {
         for (var hexagon : partida.getTauler()) {
             hexagons.add(HexagonResponse.from(hexagon, partida, List.of()));
         }
-        return new GameResponse(partida.getId(), partida.getEstat(), partida.getRonda(),
+        var game = new GameResponse(partida.getId(), partida.getEstat(), partida.getRonda(),
                 partida.getPuntsPerGuanyar(), players, hexagons);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Partida-info", "Partida creada ID: " + partida.getId())
+                .body(game);
     }
 
     private void afegirTerrenys(
@@ -321,9 +329,11 @@ public class PartidaService {
     }
 
     @Transactional(readOnly = true)
-    public List<HexagonResponse> mostrarTauler(Integer idPartida) {
+    public ResponseEntity<List<HexagonResponse>> mostrarTauler(Integer idPartida) {
 
-        Partida partida = buscarPartida(idPartida);
+        var partida = partidaRepository.findById(idPartida).orElse(null);
+        if (partida == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix la partida amb id: " + idPartida);
 
         // Every building on the board in a single query, grouped by hexagon id
         var buildings = new HashMap<Integer, List<HexagonResponse.Building>>();
@@ -338,7 +348,7 @@ public class PartidaService {
         for (Hexagon hexagon : hexagonRepository.findByPartida_IdOrderByCodiAsc(idPartida)) {
             board.add(HexagonResponse.from(hexagon, partida, buildings.getOrDefault(hexagon.getId(), List.of())));
         }
-        return board;
+        return ResponseEntity.ok(board);
     }
 
     @Transactional(readOnly = true)
@@ -400,19 +410,17 @@ public class PartidaService {
     }
 
     @Transactional
-    public DiceRollResponse tirarDaus(int idPartida) {
+    public ResponseEntity<DiceRollResponse> tirarDaus(int idPartida) {
 
-        Partida partida = buscarPartida(idPartida);
+        var partida = partidaRepository.findById(idPartida).orElse(null);
+        if (partida == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix la partida amb id: " + idPartida);
 
-        if (partida.getEstat() != EstatPartida.EN_CURS) {
-            throw new IllegalStateException(
-                    "Només es poden tirar els daus amb la partida en curs");
-        }
+        if (partida.getEstat() != EstatPartida.EN_CURS)
+            return error(HttpStatus.CONFLICT, "Només es poden tirar els daus amb la partida en curs");
 
-        if (partida.isDausTirats()) {
-            throw new IllegalStateException(
-                    "Els daus ja s'han tirat aquest torn");
-        }
+        if (partida.isDausTirats())
+            return error(HttpStatus.CONFLICT, "Els daus ja s'han tirat aquest torn");
 
         int dau1 = random.nextInt(6) + 1;
         int dau2 = random.nextInt(6) + 1;
@@ -437,7 +445,7 @@ public class PartidaService {
                     received.getOrDefault(jugador.getId(), new EnumMap<>(TipusRecurs.class)),
                     discarded.getOrDefault(jugador.getId(), 0)));
         }
-        return new DiceRollResponse(dau1, dau2, tirada, partida.isLladrePendent(), players);
+        return ResponseEntity.ok(new DiceRollResponse(dau1, dau2, tirada, partida.isLladrePendent(), players));
     }
 
     private void gestionarSet(Partida partida, HashMap<Integer, Integer> discarded) {

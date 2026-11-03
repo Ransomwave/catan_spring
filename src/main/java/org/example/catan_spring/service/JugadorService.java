@@ -27,6 +27,8 @@ import org.example.catan_spring.repository.HexagonRepository;
 import org.example.catan_spring.repository.JugadorRepository;
 import org.example.catan_spring.repository.PoblatRepository;
 import org.example.catan_spring.repository.VertexRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,39 +72,40 @@ public class JugadorService {
         this.ciutatRepository = ciutatRepository;
     }
 
-    /**
-     * @return the name of the player whose turn it is now
-     */
     @Transactional
-    public String passarTorn(int idJugador) {
-
-        var jugador = jugadorRepository.findById(idJugador)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+    public ResponseEntity<String> passarTorn(int idJugador) {
+        var jugador = jugadorRepository.findById(idJugador).orElse(null);
+        if (jugador == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el jugador " + idJugador);
 
         var partida = jugador.getPartida();
-        if (partida.getEstat() == EstatPartida.FINALITZADA) {
-            throw new IllegalStateException("Partida no en curs: la partida ja ha finalitzat");
-        }
-        if (partida.getActiu() == null || !partida.getActiu().getId().equals(idJugador)) {
-            throw new IllegalStateException("No és el teu torn");
-        }
-        if (partida.isLladrePendent()) {
-            throw new IllegalStateException("Lladre pendent: primer s'ha de moure el lladre");
-        }
+        if (partida.getEstat() == EstatPartida.FINALITZADA)
+            return error(HttpStatus.CONFLICT, "Partida no en curs: la partida ja ha finalitzat");
+        if (partida.getActiu() == null || !partida.getActiu().getId().equals(idJugador))
+            return error(HttpStatus.CONFLICT, "No és el teu torn");
+        if (partida.isLladrePendent())
+            return error(HttpStatus.CONFLICT, "Lladre pendent: primer s'ha de moure el lladre");
+
         if (partida.getEstat() == EstatPartida.EN_CURS) {
-            if (!partida.isDausTirats()) {
-                throw new IllegalStateException("Daus no tirats");
-            }
+            if (!partida.isDausTirats())
+                return error(HttpStatus.CONFLICT, "Daus no tirats");
             passarTornEnCurs(partida);
         } else if (partida.getEstat() == EstatPartida.PREPARACIO) {
-            comprovarPecesPreparacio(jugador, partida);
-            passarTornPreparacio(partida);
+            var piecesError = comprovarPecesPreparacio(jugador, partida);
+            if (piecesError != null)
+                return error(HttpStatus.CONFLICT, piecesError);
+            var turnError = passarTornPreparacio(partida);
+            if (turnError != null)
+                return error(HttpStatus.CONFLICT, turnError);
         } else {
-            throw new IllegalStateException(
-                    "No es pot passar torn en aquest estat de partida.");
+            return error(HttpStatus.CONFLICT, "No es pot passar torn en aquest estat de partida.");
         }
         partida.setDausTirats(false);
-        return partida.getActiu().getNom();
+        return ResponseEntity.ok("Torn passat: ara és el torn de " + partida.getActiu().getNom());
+    }
+
+    private static <T> ResponseEntity<T> error(HttpStatus status, String info) {
+        return ResponseEntity.status(status).header("Jugador-info", info).build();
     }
 
     private void passarTornEnCurs(Partida partida) {
@@ -124,7 +127,10 @@ public class JugadorService {
                 "No s'ha trobat el jugador següent.");
     }
 
-    private void passarTornPreparacio(Partida partida) {
+    /**
+     * @return the error message, or null if the turn was passed
+     */
+    private String passarTornPreparacio(Partida partida) {
         var jugadors = partida.getJugadors();
         int ordreActual = partida.getActiu().getOrdreTorn();
         int maxJugadors = jugadors.size();
@@ -143,17 +149,15 @@ public class JugadorService {
                     var poblats = poblatRepository.countByPropietari(jugador);
                     var carreteres = carreteraRepository.countByPropietari(jugador);
 
-                    if (poblats < 2 || carreteres < 2) {
-                        throw new IllegalStateException(
-                                "El jugador " + jugador.getNom() + " no té dos poblats i dues carreteres.");
-                    }
+                    if (poblats < 2 || carreteres < 2)
+                        return "El jugador " + jugador.getNom() + " no té dos poblats i dues carreteres.";
                 }
                 partida.setEstat(EstatPartida.EN_CURS);
                 partida.setRonda(1);
                 for (var jugador : jugadors) {
                     if (jugador.getOrdreTorn() == 1) {
                         partida.setActiu(jugador);
-                        return;
+                        return null;
                     }
                 }
 
@@ -164,7 +168,7 @@ public class JugadorService {
         for (var jugador : jugadors) {
             if (jugador.getOrdreTorn() == ordreSeguent) {
                 partida.setActiu(jugador);
-                return;
+                return null;
             }
         }
 
@@ -172,19 +176,18 @@ public class JugadorService {
                 "No s'ha trobat el jugador següent.");
     }
 
-    private void comprovarPecesPreparacio(Jugador jugador, Partida partida) {
+    /**
+     * @return the error message, or null if the player has placed this round's pieces
+     */
+    private String comprovarPecesPreparacio(Jugador jugador, Partida partida) {
         int ronda = partida.getRonda();
         var poblats = poblatRepository.countByPropietari(jugador);
         var carreteres = carreteraRepository.countByPropietari(jugador);
-        if (poblats < ronda || carreteres < ronda) {
-            if (ronda == 1) {
-                throw new IllegalStateException(
-                        "Has de tenir " + ronda + " poblat i " + ronda + " carretera abans de passar torn.");
-            } else {
-                throw new IllegalStateException(
-                        "Has de tenir " + ronda + " poblats i " + ronda + " carreteres abans de passar torn.");
-            }
-        }
+        if (poblats >= ronda && carreteres >= ronda)
+            return null;
+        if (ronda == 1)
+            return "Has de tenir " + ronda + " poblat i " + ronda + " carretera abans de passar torn.";
+        return "Has de tenir " + ronda + " poblats i " + ronda + " carreteres abans de passar torn.";
     }
 
     @Transactional
@@ -344,31 +347,38 @@ public class JugadorService {
     }
 
     @Transactional(readOnly = true)
-    public PlayerResponse mostrarRecursos(int idJugador) {
-        var jugador = jugadorRepository.findById(idJugador)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
-        return PlayerResponse.from(jugador);
+    public ResponseEntity<PlayerResponse> mostrarRecursos(int idJugador) {
+        var jugador = jugadorRepository.findById(idJugador).orElse(null);
+        if (jugador == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el jugador " + idJugador);
+        return ResponseEntity.ok(PlayerResponse.from(jugador));
     }
 
     @Transactional
-    public void construirCarretera(int idJugador, int idAresta) {
-        var jugador = jugadorRepository.findById(idJugador)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+    public ResponseEntity<String> construirCarretera(int idJugador, int idAresta) {
+        var jugador = jugadorRepository.findById(idJugador).orElse(null);
+        if (jugador == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el jugador " + idJugador);
 
-        GameRulesHelper.checkAction(jugador, true);
+        try {
+            GameRulesHelper.checkAction(jugador, true);
+        } catch (IllegalStateException e) {
+            return error(HttpStatus.CONFLICT, e.getMessage());
+        }
         var partida = jugador.getPartida();
-        var aresta = arestaRepository.findById(idAresta)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix l'aresta " + idAresta));
+        var aresta = arestaRepository.findById(idAresta).orElse(null);
+        if (aresta == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix l'aresta " + idAresta);
         if (!aresta.getPartida().getId().equals(partida.getId()))
-            throw new IllegalStateException("Posició d'una altra partida");
+            return error(HttpStatus.CONFLICT, "Posició d'una altra partida");
 
         var roadsOnAresta = carreteraRepository.countByAresta(aresta);
         if (roadsOnAresta > 0)
-            throw new IllegalStateException("Posició ocupada");
+            return error(HttpStatus.CONFLICT, "Posició ocupada");
 
         var ownRoads = carreteraRepository.countByPropietari(jugador);
         if (ownRoads >= 15)
-            throw new IllegalStateException("Límit assolit: ja tens 15 carreteres");
+            return error(HttpStatus.CONFLICT, "Límit assolit: ja tens 15 carreteres");
 
         var vertexA = aresta.getVertexA();
         var vertexB = aresta.getVertexB();
@@ -378,59 +388,78 @@ public class JugadorService {
             // only poblat that doesn't have one of their roads next to it yet
             var newPoblats = poblatRepository.poblatsPerJugadorVertexAB(jugador, vertexA, vertexB);
             if (newPoblats == 0)
-                throw new IllegalStateException("No connectat: la carretera ha de tocar el poblat que acabes de col·locar");
+                return error(HttpStatus.CONFLICT,
+                        "No connectat: la carretera ha de tocar el poblat que acabes de col·locar");
         } else {
             // the road must touch one of the player's poblats/ciutats or another of
             // their roads
             var ownAssentaments = assentamentRepository.assentamentsPerJugadorVertexAB(jugador, vertexA, vertexB);
             var ownConnectedRoads = carreteraRepository.carreteresPerJugadorVertexAB(jugador, vertexA, vertexB);
             if (ownAssentaments == 0 && ownConnectedRoads == 0)
-                throw new IllegalStateException("No connectat: la carretera ha de tocar una construcció o carretera teva");
+                return error(HttpStatus.CONFLICT,
+                        "No connectat: la carretera ha de tocar una construcció o carretera teva");
 
-            GameRulesHelper.pay(jugador, GameRulesHelper.COST_CARRETERA);
+            try {
+                GameRulesHelper.pay(jugador, GameRulesHelper.COST_CARRETERA);
+            } catch (IllegalStateException e) {
+                return error(HttpStatus.CONFLICT, e.getMessage());
+            }
         }
 
         var carretera = new Carretera();
         carretera.setPropietari(jugador);
         carretera.setAresta(aresta);
         carreteraRepository.save(carretera);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Jugador-info", "Carretera construida ID: " + carretera.getId())
+                .body("Construit");
     }
 
     @Transactional
-    public void construirPoblat(int idJugador, int idVertex) {
-        var jugador = jugadorRepository.findById(idJugador)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+    public ResponseEntity<String> construirPoblat(int idJugador, int idVertex) {
+        var jugador = jugadorRepository.findById(idJugador).orElse(null);
+        if (jugador == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el jugador " + idJugador);
 
-        GameRulesHelper.checkAction(jugador, true);
+        try {
+            GameRulesHelper.checkAction(jugador, true);
+        } catch (IllegalStateException e) {
+            return error(HttpStatus.CONFLICT, e.getMessage());
+        }
         var partida = jugador.getPartida();
         var preparacio = partida.getEstat() == EstatPartida.PREPARACIO;
-        var vertex = vertexRepository.findById(idVertex)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el vèrtex " + idVertex));
+        var vertex = vertexRepository.findById(idVertex).orElse(null);
+        if (vertex == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el vèrtex " + idVertex);
         if (!vertex.getPartida().getId().equals(partida.getId()))
-            throw new IllegalStateException("Posició d'una altra partida");
+            return error(HttpStatus.CONFLICT, "Posició d'una altra partida");
 
         var buildingsOnVertex = assentamentRepository.countByVertex(vertex);
         if (buildingsOnVertex > 0)
-            throw new IllegalStateException("Posició ocupada");
+            return error(HttpStatus.CONFLICT, "Posició ocupada");
 
         var buildingsNextTo = assentamentRepository.assentamentsPerVertex(vertex);
         if (buildingsNextTo > 0)
-            throw new IllegalStateException("Regla de la distància: hi ha una construcció en un vèrtex adjacent");
+            return error(HttpStatus.CONFLICT, "Regla de la distància: hi ha una construcció en un vèrtex adjacent");
 
         var ownPoblats = poblatRepository.countByPropietari(jugador);
         if (ownPoblats >= 5)
-            throw new IllegalStateException("Límit assolit: ja tens 5 poblats");
+            return error(HttpStatus.CONFLICT, "Límit assolit: ja tens 5 poblats");
 
         if (preparacio) {
             // only 1 poblat per turn during the preparation phase
             if (ownPoblats >= partida.getRonda())
-                throw new IllegalStateException("Límit assolit: ja has col·locat el poblat d'aquest torn");
+                return error(HttpStatus.CONFLICT, "Límit assolit: ja has col·locat el poblat d'aquest torn");
         } else {
             var ownRoadsHere = carreteraRepository.carreteresPerJugadorVertex(jugador, vertex);
             if (ownRoadsHere == 0)
-                throw new IllegalStateException("No connectat: el poblat ha de tocar una carretera teva");
+                return error(HttpStatus.CONFLICT, "No connectat: el poblat ha de tocar una carretera teva");
 
-            GameRulesHelper.pay(jugador, GameRulesHelper.COST_POBLAT);
+            try {
+                GameRulesHelper.pay(jugador, GameRulesHelper.COST_POBLAT);
+            } catch (IllegalStateException e) {
+                return error(HttpStatus.CONFLICT, e.getMessage());
+            }
         }
 
         var poblat = new Poblat();
@@ -450,27 +479,40 @@ public class JugadorService {
         }
 
         partidaService.comprovarVictoria(partida.getId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Jugador-info", "Poblat construit ID: " + poblat.getId())
+                .body("Construit");
     }
 
     @Transactional
-    public void millorarACiutat(int idJugador, int idVertex) {
-        var jugador = jugadorRepository.findById(idJugador)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el jugador " + idJugador));
+    public ResponseEntity<String> millorarACiutat(int idJugador, int idVertex) {
+        var jugador = jugadorRepository.findById(idJugador).orElse(null);
+        if (jugador == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el jugador " + idJugador);
 
-        GameRulesHelper.checkAction(jugador, false);
+        try {
+            GameRulesHelper.checkAction(jugador, false);
+        } catch (IllegalStateException e) {
+            return error(HttpStatus.CONFLICT, e.getMessage());
+        }
         var partida = jugador.getPartida();
-        var vertex = vertexRepository.findById(idVertex)
-                .orElseThrow(() -> new IllegalArgumentException("No existeix el vèrtex " + idVertex));
+        var vertex = vertexRepository.findById(idVertex).orElse(null);
+        if (vertex == null)
+            return error(HttpStatus.NOT_FOUND, "No existeix el vèrtex " + idVertex);
         if (!vertex.getPartida().getId().equals(partida.getId()))
-            throw new IllegalStateException("Posició d'una altra partida");
+            return error(HttpStatus.CONFLICT, "Posició d'una altra partida");
 
         var poblat = poblatRepository.poblatPerVertex(vertex);
         if (poblat == null || !poblat.getPropietari().getId().equals(idJugador))
-            throw new IllegalStateException("No hi ha cap poblat teu per millorar");
+            return error(HttpStatus.CONFLICT, "No hi ha cap poblat teu per millorar");
         if (ciutatRepository.countByPropietari(jugador) >= 4)
-            throw new IllegalStateException("Límit assolit: ja tens 4 ciutats");
+            return error(HttpStatus.CONFLICT, "Límit assolit: ja tens 4 ciutats");
 
-        GameRulesHelper.pay(jugador, GameRulesHelper.COST_CIUTAT);
+        try {
+            GameRulesHelper.pay(jugador, GameRulesHelper.COST_CIUTAT);
+        } catch (IllegalStateException e) {
+            return error(HttpStatus.CONFLICT, e.getMessage());
+        }
         poblatRepository.delete(poblat);
         // Hibernate flushes deletes after inserts, so the poblat must leave the vertex before the ciutat takes it
         poblatRepository.flush();
@@ -480,6 +522,9 @@ public class JugadorService {
         ciutat.setPropietari(jugador);
         ciutatRepository.save(ciutat);
         partidaService.comprovarVictoria(partida.getId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Jugador-info", "Ciutat construida ID: " + ciutat.getId())
+                .body("Construit");
     }
 
     @Transactional
